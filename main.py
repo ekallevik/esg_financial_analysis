@@ -3,23 +3,98 @@ import pandas as pd
 
 def main():
 
-    data_set_one = get_data_set(
-        data_set="data1",
+    # change this variable to use the code for other years
+    year = 2003
+
+    # gets and saves the stock_prices for the given year
+    stock_prices = get_and_clean_data(
+        filename=f"stock_prices_{year}",
         isin_column="International Security Identification Number",
         other_columns=["Data Date - Daily Prices", "Shares Outstanding", "Price - Close - Daily"],
+        year=year,
     )
-    data_set_one = remove_irrelevant_rows(
-        data_set_one, column="Data Date - Daily Prices", matching_value=20030102
-    )
-    save_to_excel_file(data_set_one, filename="data1_clean")
+    save_to_excel_file(stock_prices, filename=f"stock_prices_{year}_clean")
 
-    data_set_two = get_data_set(
-        data_set="data2", isin_column="Company ISIN", other_columns=["ESG 2003"]
+    # gets and saves the esg_ratings for the given year
+    esg_ratings = get_and_clean_data(
+        filename=f"esg_ratings_{year}",
+        isin_column="Company ISIN",
+        other_columns=[f"ESG {year}"],
+        year=year
     )
-    save_to_excel_file(data_set_two, filename="data2_clean")
+    save_to_excel_file(esg_ratings, filename=f"esg_ratings_{year}_clean")
 
-    merged_data_set = merge_data_sets(dataset_one=data_set_one, dataset_two=data_set_two)
-    save_to_excel_file(merged_data_set, filename="merged_data")
+    # merges stock_prices and esg_ratings and saves the data
+    merged_data_set = merge_data_sets(dataset_one=stock_prices, dataset_two=esg_ratings)
+    save_to_excel_file(merged_data_set, filename=f"merged_data_{year}")
+
+
+def get_and_clean_data(filename, isin_column, other_columns, year):
+    """ Gets the data from the given filename and removes unnecessary and unwanted data """
+
+    data = get_data(
+        file=filename, isin_column=isin_column, other_columns=other_columns,
+    )
+
+    data = remove_companies_without_valid_isin(data, isin_column)
+
+    if "esg_ratings" in filename:
+        dates = get_relevant_dates(year)
+        data = get_only_matching_rows(data=data, column="Data Date - Daily Prices", matching_values=dates)
+
+    return data
+
+
+def get_relevant_dates(year):
+    """ Gets the relevant dates for the given year """
+
+    if year == 2003:
+        return [
+            "20030102", "20030203", "20030303", "20030401", "20030502", "20030603", "20030701", "20030801", "20030902",
+            "20031001", "20031103", "20031201",
+        ]
+    # you can add additional elif-clauses here if needed. f. ex:
+    # elif year == 2004:
+    #     return ....
+    else:
+        raise ValueError("A list of relevant dates does not exist for the given year")
+
+
+def get_only_matching_rows(data, column, matching_values):
+    """
+    Gets all rows which match against one of the values in the list matching_values in the given column.
+    All other rows are discarded
+    """
+
+    if type(matching_values) != list:
+        raise ValueError("matching_values should be a list")
+
+    old_length = len(data[column])
+
+    data = data[data[column].isin(matching_values)]
+
+    new_length = len(data[column])
+    percentage = 1.0 - new_length / old_length
+    print(f"Removed irrelevant rows (reduction of {percentage:.2%})\n")
+
+    return data
+
+
+def remove_companies_without_valid_isin(data, isin_column):
+    """ Removes any row without a ISIN number. """
+
+    old_length = len(data[isin_column])
+
+    data.dropna(subset=[isin_column], inplace=True)
+
+    new_length = len(data[isin_column])
+    percentage = 1.0 - new_length / old_length
+
+    print(
+        f"Removed {old_length - new_length} records without valid ISIN (reduction of {percentage:.2%})"
+    )
+
+    return data
 
 
 def merge_data_sets(dataset_one, dataset_two):
@@ -39,74 +114,36 @@ def merge_data_sets(dataset_one, dataset_two):
     return merged_dataset
 
 
-def get_data_set(data_set, isin_column, other_columns):
-    """
-    Loads the data, and removes rows without valid ISIN.
-    """
+def get_data(file, isin_column, other_columns):
+    """ Loads the data, and removes rows without valid ISIN. """
 
     if type(other_columns) != list:
         raise ValueError("other_columns should be a list")
 
-    data = load_from_excel_file(data_set)
+    data = load_from_excel_file(file)
 
-    dataframe = pd.DataFrame(data, columns=[isin_column, *other_columns])
-    print(f"Loaded columns from {data_set}: \n{list(dataframe.columns)} \n")
+    # removes unnecessary columns
+    data = pd.DataFrame(data, columns=[isin_column, *other_columns])
+    print(f"Loaded columns from {file}: \n{list(data.columns)} \n")
 
-    dataframe = remove_companies_without_valid_isin(dataframe, isin_column)
-
-    return dataframe
+    return data
 
 
-def remove_irrelevant_rows(dataframe, column, matching_value):
+def save_to_excel_file(data, filename="merged_data"):
     """
-    Removes any row where the value of the cell (row, column) is not equal to matching_value.
-    """
-
-    old_length = len(dataframe[column])
-
-    dataframe = dataframe.loc[dataframe[column] == matching_value]
-    new_length = len(dataframe[column])
-    percentage = 1.0 - new_length / old_length
-    print(f"Removed irrelevant rows (reduction of {percentage:.2%})\n")
-
-    return dataframe
-
-
-def remove_companies_without_valid_isin(dataframe, isin_column):
-    """
-    Removes any row without a ISIN number.
+    Saves the data to an Excel-file with the given filename. The file is stored in the data-folder
     """
 
-    old_length = len(dataframe[isin_column])
-
-    dataframe.dropna(subset=[isin_column], inplace=True)
-    new_length = len(dataframe[isin_column])
-    percentage = new_length / old_length
-
-    print(
-        f"Removed {old_length - new_length} records without valid ISIN (reduction of {1.0 - percentage:.2%})"
-    )
-
-    return dataframe
+    print(f"Saving data to file: {filename}.xlsx\n")
+    data.to_excel(f"data/{filename}.xlsx")
+    print("Data saved")
 
 
-def save_to_excel_file(dataframe, filename="merged_data"):
-    """
-    Saves the dataframe to an Excel-file with the given filename. The file is stored in the data-folder
-    """
+def load_from_excel_file(filename):
+    """ Loads the data from the file """
 
-    print(f"Saving dataframe to file: {filename}.xlsx\n")
-    dataframe.to_excel(f"data/{filename}.xlsx")
-    print("Dataframe saved")
-
-
-def load_from_excel_file(data_set):
-    """
-    Loads the data set from file
-    """
-
-    print(f"Loading {data_set}")
-    return pd.read_excel(f"data/{data_set}.xlsx")
+    print(f"Loading {filename}")
+    return pd.read_excel(f"data/{filename}.xlsx")
 
 
 if __name__ == "__main__":
