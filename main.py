@@ -38,7 +38,7 @@ def get_and_clean_data(filename, isin_column, other_columns, year):
 
     data = remove_companies_without_valid_isin(data, isin_column)
 
-    if "esg_ratings" in filename:
+    if "stock_prices" in filename:
         dates = get_relevant_dates(year)
         data = get_only_matching_rows(data=data, column="Data Date - Daily Prices", matching_values=dates)
 
